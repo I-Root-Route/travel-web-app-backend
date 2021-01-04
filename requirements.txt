@@ -1,0 +1,7 @@
+Flask_Cors==3.0.9
+elasticsearch==7.10.0
+Flask==1.1.2
+pyodbc==4.0.0_unsupported
+gevent==20.6.2
+requests==2.24.0
+PyMySQL==0.10.1

@@ -17,6 +17,10 @@ import settings
 app = Flask(__name__)
 CORS(app)
 
+es = Elasticsearch("https://3am93jkr5y:6obxztkcum@journey-list-8250541344.ap-southeast-2.bonsaisearch.net:443",
+                   http_auth=('3am93jkr5y', '6obxztkcum'))
+
+
 @app.route('/')
 def hello():
     return "It's Working!"
@@ -234,11 +238,3 @@ def get_personal_data():
          "average": average_cost
          }
     )
-
-
-if __name__ == '__main__':
-    es = Elasticsearch("https://3am93jkr5y:6obxztkcum@journey-list-8250541344.ap-southeast-2.bonsaisearch.net:443",
-                       http_auth=('3am93jkr5y', '6obxztkcum'))
-    app.run()
-    # http_server = WSGIServer(('', 5000), app)
-    # http_server.serve_forever()
