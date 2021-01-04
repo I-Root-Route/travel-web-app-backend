@@ -15,3 +15,12 @@ def get_currency_rate(currency, start_date):
         rate = response["rates"][currency]
         return rate
 
+
+def get_average_cost(length_data, cost_data):
+    averages = []
+    for country, stay_length in length_data.items():
+        spendings = cost_data[country]
+        averages.append((country, int(spendings / stay_length)))
+
+    return sorted(averages, key=lambda x: x[1], reverse=True)
+

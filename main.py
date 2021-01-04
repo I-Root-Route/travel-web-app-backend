@@ -1,13 +1,18 @@
 import requests
 import datetime
+import random
 from elasticsearch import Elasticsearch
 from elasticsearch import helpers
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from gevent.pywsgi import WSGIServer
 
 from database.open_database import OpenDatabase
-from calculation.calculate_rate import get_currency_rate
+from calculation.calculate_rate import get_currency_rate, get_average_cost
 from backend_process.is_write_submission_valid import is_valid
+from backend_process.sort_dict import sort_dict
+
+import settings
 
 app = Flask(__name__)
 CORS(app)
@@ -18,6 +23,7 @@ def login_process():
     database = OpenDatabase().database
     user_info = request.get_json()["data"]
     user_name = user_info["username"]
+    user_name = user_name.replace(' ', '-')
     hashed_password = user_info["hashedPassword"]
 
     try:
@@ -49,6 +55,7 @@ def register_process():
     database = OpenDatabase().database
     user_info = request.get_json()["data"]
     user_name = user_info["username"]
+    user_name = user_name.replace(' ', '-')
     hashed_password = user_info["hashedPassword"]
 
     try:
@@ -62,6 +69,10 @@ def register_process():
                     insert_sql = "INSERT INTO users (name, password) VALUES  (%s, %s)"
                     cursor.execute(insert_sql, (user_name, hashed_password))
                     database.commit()
+
+                    base_url = "https://3am93jkr5y:6obxztkcum@journey-list-8250541344.ap-southeast-2.bonsaisearch.net:443/"
+                    url = base_url + user_name
+                    requests.put(url)
                 except Exception as e:
                     database.close()
                     return {"message": f"ERROR {e}"}
@@ -109,6 +120,7 @@ def insert_visit_data():
         return jsonify(is_valid(req))
 
     username = req["userName"]
+    username = username.replace(' ', '-')
     visited_country = req["visitedCountry"]
     visited_state = req["visitedState"]
     total_cost = req["totalCost"]
@@ -135,7 +147,7 @@ def insert_visit_data():
 
     reformatted_data = [{
         "_index": username,
-        "_source": {
+        "data": {
             "username": username,
             "data": {
                 "visited_country": visited_country,
@@ -148,18 +160,80 @@ def insert_visit_data():
             }
         }
     }]
-
     try:
         helpers.bulk(es, reformatted_data)
         res = {
             "message": "Insert Success"
         }
-    except Exception as e:
+    except helpers.BulkIndexError as e:
+        print(e)
         return jsonify({"message": e})
 
     return jsonify(res)
 
 
+@app.route('/api/search_personal_data', methods=['GET', 'POST'])
+def get_personal_data():
+    countries = []
+    calendar_data = []
+    length_pie_chart = {}
+    spending_pie_chart = {}
+
+    req = request.get_json()
+    user_name = req["username"]
+    user_name = user_name.replace(" ", "-")
+    es_body = {
+        "query": {"match_all": {}},
+        "size": 10000
+    }
+    raw_data = es.search(body=es_body, index=user_name)
+    hits = raw_data["hits"]["hits"]
+
+    for hit in hits:
+        data = hit["_source"]["data"]["data"]
+
+        country = data["visited_country"]
+        state = data["visited_state"]
+
+        name = f"{country}: {state}"
+        start = data["dates"][0]
+        end = data["dates"][1]
+
+        length = data["stay_length"]
+        spendings = int(data["total_usd_cost"])
+
+        calendar_data.append({
+            "name": name,
+            "start": start,
+            "end": end,
+            # "start": f"moment({start}).toDate()",
+            # "end": f"moment({end}).toDate()",
+            "color": settings.colors[random.randrange(len(settings.colors))],
+            "timed": "true",
+        })
+
+        if country not in length_pie_chart.keys():
+            countries.append(country)
+            length_pie_chart[country] = length
+            spending_pie_chart[country] = spendings
+        else:
+            length_pie_chart[country] += length
+            spending_pie_chart[country] += spendings
+
+    average_cost = get_average_cost(length_pie_chart, spending_pie_chart)
+
+    return jsonify(
+        {"calendar": calendar_data,
+         "length": sort_dict(length_pie_chart),
+         "spendings": sort_dict(spending_pie_chart),
+         "countries": countries,
+         "average": average_cost
+         }
+    )
+
+
 if __name__ == '__main__':
-    es = Elasticsearch("http://localhost:9200")
-    app.run()
+    es = Elasticsearch("https://3am93jkr5y:6obxztkcum@journey-list-8250541344.ap-southeast-2.bonsaisearch.net:443",
+                       http_auth=('3am93jkr5y', '6obxztkcum'))
+    http_server = WSGIServer(('', 5000), app)
+    http_server.serve_forever()
