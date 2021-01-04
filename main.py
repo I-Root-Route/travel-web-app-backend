@@ -5,7 +5,7 @@ from elasticsearch import Elasticsearch
 from elasticsearch import helpers
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from gevent.pywsgi import WSGIServer
+# from gevent.pywsgi import WSGIServer
 
 # from database.open_database import OpenDatabase
 from calculation.calculate_rate import get_currency_rate, get_average_cost
