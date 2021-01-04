@@ -238,3 +238,7 @@ def get_personal_data():
          "average": average_cost
          }
     )
+
+
+if __name__ == '__main__':
+    app.run()
