@@ -21,7 +21,7 @@ es = Elasticsearch("https://3am93jkr5y:6obxztkcum@journey-list-8250541344.ap-sou
                    http_auth=('3am93jkr5y', '6obxztkcum'))
 
 
-@app.route('/')
+@app.route('/', methods=['GET'])
 def hello():
     return "It's Working!"
 
