@@ -5,9 +5,8 @@ from elasticsearch import Elasticsearch
 from elasticsearch import helpers
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-# from gevent.pywsgi import WSGIServer
+import logging
 
-# from database.open_database import OpenDatabase
 from calculation.calculate_rate import get_currency_rate, get_average_cost
 from backend_process.is_write_submission_valid import is_valid
 from backend_process.sort_dict import sort_dict
@@ -17,8 +16,19 @@ import settings
 app = Flask(__name__)
 CORS(app)
 
-es = Elasticsearch("https://3am93jkr5y:6obxztkcum@journey-list-8250541344.ap-southeast-2.bonsaisearch.net:443",
-                   http_auth=('3am93jkr5y', '6obxztkcum'))
+es = Elasticsearch(settings.elastic_url, http_auth=(settings.elastic_user, settings.elastic_pass))
+
+
+def user_hits(user_name):
+    is_user_exist_query = {
+        "query": {
+            "match": {"user_name": user_name}
+        }
+    }
+
+    user = es.search(index=settings.users_index, body=is_user_exist_query)["hits"]["hits"]
+
+    return user
 
 
 @app.route('/')
@@ -28,78 +38,47 @@ def hello():
 
 @app.route('/api/login_process', methods=['GET', 'POST'])
 def login_process():
-    # database = OpenDatabase().database
     user_info = request.get_json()["data"]
     user_name = user_info["username"]
     user_name = user_name.replace(' ', '-')
     hashed_password = user_info["hashedPassword"]
 
-    return {"message": "Success"}
-    # try:
-    #     with database.cursor() as cursor:
-    #         sql = "SELECT EXISTS(SELECT * FROM users WHERE name=%s)"
-    #         cursor.execute(sql, user_name)
-    #         result = cursor.fetchone()
-    #         user_count = result[f"EXISTS(SELECT * FROM users WHERE name='{user_name}')"]
-    #         if user_count == 0:
-    #             database.close()
-    #             return {"message": "Incorrect username or password"}
-    #         else:
-    #             validate_password_sql = "SELECT password from travel_app.users WHERE name=%s"
-    #             cursor.execute(validate_password_sql, user_name)
-    #             password_in_database = cursor.fetchone()["password"]
-    #             if password_in_database == hashed_password:
-    #                 database.close()
-    #                 return {"message": "Success", "username": user_name}
-    #             else:
-    #                 database.close()
-    #                 return {"message": "Incorrect username or password"}
-    # except Exception as e:
-    #     database.close()
-    #     return {"message": f"ERROR! {e}"}
+    user = user_hits(user_name)
+
+    if not user:
+        return {"message": "ERROR Incorrect username or password"}
+    else:
+        pass_in_db = user[0]["_source"]["hashed_password"]
+        if hashed_password != pass_in_db:
+            return {"message": "ERROR Incorrect username or password"}
+        else:
+            return {"message": "Success"}
 
 
 @app.route('/api/register_process', methods=['GET', 'POST'])
 def register_process():
-    # database = OpenDatabase().database
     user_info = request.get_json()["data"]
     user_name = user_info["username"]
     user_name = user_name.replace(' ', '-')
     hashed_password = user_info["hashedPassword"]
 
-    base_url = "https://3am93jkr5y:6obxztkcum@journey-list-8250541344.ap-southeast-2.bonsaisearch.net:443/"
-    url = base_url + user_name
-    requests.put(url)
+    user = user_hits(user_name)
+
+    if not user:
+        try:
+            body = {
+                "user_name": user_name,
+                "hashed_password": hashed_password,
+            }
+            es.index(index=settings.users_index, body=body)
+            requests.put(settings.elastic_url + "/" + user_name)
+        except Exception as e:
+            logging.error(e)
+            return {"message": f"ERROR {e}"}
+    else:
+        return {"message": f"ERROR This user name already exists in our database. Try to use different user name"}
 
     return {"message": "Success", "username": user_name}
-#
-# try:
-#     with database.cursor() as cursor:
-#         sql = "SELECT EXISTS(SELECT * FROM users WHERE name=%s)"
-#         cursor.execute(sql, user_name)
-#         result = cursor.fetchone()
-#         user_count = result[f"EXISTS(SELECT * FROM users WHERE name='{user_name}')"]
-#         if user_count == 0:
-#             try:
-#                 insert_sql = "INSERT INTO users (name, password) VALUES  (%s, %s)"
-#                 cursor.execute(insert_sql, (user_name, hashed_password))
-#                 database.commit()
-#
-#                 base_url = "https://3am93jkr5y:6obxztkcum@journey-list-8250541344.ap-southeast-2.bonsaisearch.net:443/"
-#                 url = base_url + user_name
-#                 requests.put(url)
-#             except Exception as e:
-#                 database.close()
-#                 return {"message": f"ERROR {e}"}
-#             finally:
-#                 database.close()
-#                 return {"message": "Success", "username": user_name}
-#         elif user_count != 0:
-#             database.close()
-#             return {"message": "Failure. You can't use this username. Username must be unique"}
-# except Exception as e:
-#     database.close()
-#     return {"message": f"ERROR! {e}"}
 
 
 @app.route('/api/country_states', methods=['GET', 'POST'])
@@ -221,8 +200,6 @@ def get_personal_data():
             "name": name,
             "start": start,
             "end": end,
-            # "start": f"moment({start}).toDate()",
-            # "end": f"moment({end}).toDate()",
             "color": settings.colors[random.randrange(len(settings.colors))],
             "timed": "true",
         })
