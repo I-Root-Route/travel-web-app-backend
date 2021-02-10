@@ -8,7 +8,7 @@
 フレームワーク: Flask <br>
 データベース: ElasticSearch <br>
 サーバー: Azure App Service
-
+ 
 ## 機能
 /api/country_states: 国名を元に、その国の都市名一覧を返す。 <br>
 /api/login_process: ElasticSearchを参照し、ログインを行う。<br>
